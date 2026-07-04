@@ -60,24 +60,10 @@ def get_price_and_volume():
     try:
         res = requests.get(f"{BASE_URL}/exchange/v1/markets_details")
         data = res.json()
-        if isinstance(data, list):
-            for market in data:
-                if isinstance(market, dict):
-                    if market.get("pair") == SYMBOL:
-                        price = float(market.get("last_price", 0) or 0)
-                        volume = float(market.get("volume", 0) or 0)
-                        return price, volume
-        elif isinstance(data, dict):
-            for key, market in data.items():
-                if isinstance(market, dict):
-                    if market.get("pair") == SYMBOL:
-                        price = float(market.get("last_price", 0) or 0)
-                        volume = float(market.get("volume", 0) or 0)
-                        return price, volume
+        print(f"API type: {type(data)}, First: {str(data)[:200]}")
     except Exception as e:
-        print(f"Price fetch error: {e}")
+        print(f"Error: {e}")
     return None, None
-
 def place_buy_order(inr_amount, current_price):
     quantity = round(inr_amount / current_price, 6)
     timestamp = int(time.time() * 1000)
