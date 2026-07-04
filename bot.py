@@ -93,6 +93,8 @@ def place_buy_order(inr_amount, current_price):
             headers=get_headers(body)
         )
         print(f"BUY: {quantity} BTC | INR: {inr_amount:.2f}")
+        response = res.json()
+print(f"Order response: {response}")
         return quantity
     except Exception as e:
         print(f"Buy error: {e}")
