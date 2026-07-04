@@ -59,8 +59,10 @@ def get_inr_balance():
 def get_price_and_volume():
     res = requests.get(f"{BASE_URL}/exchange/v1/markets_details")
     for market in res.json():
-        if market["pair"] == SYMBOL:
-            return float(market["last_price"]), float(market.get("volume", 0))
+    if isinstance(market, dict) and market.get("pair") == SYMBOL:
+        price = float(market.get("last_price", 0))
+        volume = float(market.get("volume", 0))
+        return price, volume
     return None, None
 
 def place_buy_order(inr_amount, current_price):
