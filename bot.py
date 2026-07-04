@@ -5,8 +5,9 @@ import time
 import json
 from datetime import datetime, timedelta
 
-API_KEY = "eS0c4a1f3d79495dcbfc7cd7ce3db0494f69517e8faa5963"
-API_SECRET = "9b47a7e68c3f5efc817b6b1819eb02b6b31bb929690006268999fcf Tb1217fd"
+import os
+API_KEY = os.environ.get("API_KEY", "")
+API_SECRET = os.environ.get("API_SECRET", "")
 SYMBOL = "BTCINR"
 BASE_URL = "https://api.coindcx.com"
 
