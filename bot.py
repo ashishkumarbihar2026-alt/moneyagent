@@ -57,12 +57,25 @@ def get_inr_balance():
     return 0
 
 def get_price_and_volume():
-    res = requests.get(f"{BASE_URL}/exchange/v1/markets_details")
-    for market in res.json():
-        if isinstance(market, dict) and market.get("pair") == SYMBOL:
-            price = float(market.get("last_price", 0))
-            volume = float(market.get("volume", 0))
-            return price, volume
+    try:
+        res = requests.get(f"{BASE_URL}/exchange/v1/markets_details")
+        data = res.json()
+        if isinstance(data, list):
+            for market in data:
+                if isinstance(market, dict):
+                    if market.get("pair") == SYMBOL:
+                        price = float(market.get("last_price", 0) or 0)
+                        volume = float(market.get("volume", 0) or 0)
+                        return price, volume
+        elif isinstance(data, dict):
+            for key, market in data.items():
+                if isinstance(market, dict):
+                    if market.get("pair") == SYMBOL:
+                        price = float(market.get("last_price", 0) or 0)
+                        volume = float(market.get("volume", 0) or 0)
+                        return price, volume
+    except Exception as e:
+        print(f"Price fetch error: {e}")
     return None, None
 
 def place_buy_order(inr_amount, current_price):
