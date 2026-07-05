@@ -226,6 +226,7 @@ while True:
             starting_capital = inr_balance
             daily_start_capital = inr_balance
             print(f"Starting Capital: {starting_capital}")
+            save_state()
 
         if daily_start_capital > 0:
             daily_loss = (daily_start_capital - inr_balance) / daily_start_capital
