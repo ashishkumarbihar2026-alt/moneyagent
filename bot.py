@@ -19,7 +19,7 @@ PRECISION_MAP = {
 }
 QUANTITY_PRECISION = PRECISION_MAP.get(SYMBOL, 2)
 
-PROFIT_TARGET = 1.0 / 100
+PROFIT_TARGET = 10.0 / 100
 STOP_LOSS = 3.0 / 100
 DAILY_LOSS_LIMIT = 10.0 / 100
 COOLDOWN_LOSSES = 5
@@ -291,4 +291,4 @@ while True:
     except Exception as e:
         print(f"Error: {e}")
         time.sleep(30)
-        
+            
