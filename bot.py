@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 import os
 API_KEY = os.environ.get("API_KEY", "")
 API_SECRET = os.environ.get("API_SECRET", "")
-SYMBOL = "HMSTRINR"
+SYMBOL = "BTCINR"
 BASE_URL = "https://api.coindcx.com"
 
 PRECISION_MAP = {
@@ -19,7 +19,7 @@ PRECISION_MAP = {
 }
 QUANTITY_PRECISION = PRECISION_MAP.get(SYMBOL, 2)
 
-PROFIT_TARGET = 10.0 / 100
+PROFIT_TARGET = 2.0 / 100
 STOP_LOSS = 3.0 / 100
 DAILY_LOSS_LIMIT = 10.0 / 100
 COOLDOWN_LOSSES = 5
