@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 import os
 API_KEY = os.environ.get("API_KEY", "")
 API_SECRET = os.environ.get("API_SECRET", "")
-SYMBOL = "BTCINR"
+SYMBOL = "ETHINR"
 BASE_URL = "https://api.coindcx.com"
 
 PROFIT_TARGET = 2.5 / 100
