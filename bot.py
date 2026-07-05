@@ -77,7 +77,7 @@ def get_price():
 
 def place_buy_order(inr_amount, current_price):
     try:
-        quantity = round(inr_amount / current_price, 6)
+        quantity = round(inr_amount / current_price, 4)
         timestamp = int(time.time() * 1000)
         order = {
             "side": "buy",
