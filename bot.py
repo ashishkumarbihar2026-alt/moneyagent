@@ -77,7 +77,8 @@ def get_price():
 
 def place_buy_order(inr_amount, current_price):
     try:
-        quantity = round(inr_amount / current_price, 4)
+        usable_amount = inr_amount * 0.99
+        quantity = round(usable_amount / current_price, 4)
         timestamp = int(time.time() * 1000)
         order = {
             "side": "buy",
@@ -185,7 +186,7 @@ while True:
         price = get_price()
         if not price:
             print("Price nahi mili!")
-            time.sleep(60)
+            time.sleep(15)
             continue
 
         price_history.append(price)
@@ -198,7 +199,7 @@ while True:
 
         if not ema9 or not ema21:
             print(f"Price: {price:,.0f} | Data collect ho raha hai {len(price_history)}/21")
-            time.sleep(60)
+            time.sleep(15)
             continue
 
         rsi_str = f"{rsi:.1f}" if rsi else "..."
@@ -231,9 +232,9 @@ while True:
             else:
                 print(f"Wait | EMA: {'OK' if ema_ok else 'NO'} | RSI: {rsi_str}")
 
-        time.sleep(60)
+        time.sleep(15)
 
     except Exception as e:
         print(f"Error: {e}")
         time.sleep(30)
-        
+                           
