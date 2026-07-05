@@ -12,6 +12,13 @@ API_SECRET = os.environ.get("API_SECRET", "")
 SYMBOL = "HMSTRINR"
 BASE_URL = "https://api.coindcx.com"
 
+PRECISION_MAP = {
+    "BTCINR": 6,
+    "ETHINR": 4,
+    "HMSTRINR": 0
+}
+QUANTITY_PRECISION = PRECISION_MAP.get(SYMBOL, 2)
+
 PROFIT_TARGET = 1.0 / 100
 STOP_LOSS = 3.0 / 100
 DAILY_LOSS_LIMIT = 10.0 / 100
@@ -28,7 +35,7 @@ consecutive_losses = 0
 cooldown_until = None
 price_history = []
 
-STATE_FILE = "/data/position.json"
+STATE_FILE = "/data/position.json" if os.path.isdir("/data") else "position.json"
 
 def save_state():
     try:
@@ -119,7 +126,8 @@ def get_price():
 def place_buy_order(inr_amount, current_price):
     try:
         usable_amount = inr_amount * 0.97
-        quantity = math.floor((usable_amount / current_price) * 10000) / 10000
+        multiplier = 10 ** QUANTITY_PRECISION
+        quantity = math.floor((usable_amount / current_price) * multiplier) / multiplier
         timestamp = int(time.time() * 1000)
         order = {
             "side": "buy",
