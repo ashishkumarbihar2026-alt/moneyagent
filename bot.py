@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import time
 import json
+import math
 from datetime import datetime, timedelta
 
 import os
@@ -77,8 +78,8 @@ def get_price():
 
 def place_buy_order(inr_amount, current_price):
     try:
-        usable_amount = inr_amount * 0.99
-        quantity = round(usable_amount / current_price, 4)
+        usable_amount = inr_amount * 0.97
+        quantity = math.floor((usable_amount / current_price) * 10000) / 10000
         timestamp = int(time.time() * 1000)
         order = {
             "side": "buy",
@@ -237,4 +238,4 @@ while True:
     except Exception as e:
         print(f"Error: {e}")
         time.sleep(30)
-                           
+            
