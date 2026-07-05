@@ -94,8 +94,8 @@ def place_buy_order(inr_amount, current_price):
         )
         print(f"BUY: {quantity} BTC | INR: {inr_amount:.2f}")
         response = res.json()
-            print(f"Order response: {response}")
-            return quantity
+        print(f"Order response: {response}")
+        return quantity
     except Exception as e:
         print(f"Buy error: {e}")
         return 0
@@ -150,7 +150,7 @@ def get_rsi(prices, period=14):
     return 100 - (100 / (1 + rs))
 
 print("MoneyAgent Bot Started!")
-print(f"Profit={PROFIT_TARGET*100}% | StopLoss={STOP_LOSS*100}% | DailyLimit={DAILY_LOSS_LIMIT*100}%")
+print(f"Profit:{PROFIT_TARGET*100}% | StopLoss:{STOP_LOSS*100}% | DailyLossLimit:{DAILY_LOSS_LIMIT*100}%")
 
 while True:
     try:
@@ -178,7 +178,7 @@ while True:
         if daily_start_capital > 0:
             daily_loss = (daily_start_capital - inr_balance) / daily_start_capital
             if daily_loss >= DAILY_LOSS_LIMIT and position is None:
-                print(f"Daily loss limit! Trading band!")
+                print("Daily loss limit! Trading band!")
                 time.sleep(300)
                 continue
 
@@ -207,7 +207,7 @@ while True:
         if position == "buy":
             profit_pct = (price - buy_price) / buy_price
             if profit_pct >= PROFIT_TARGET:
-                print(f"Profit! +{profit_pct*100:.2f}% SELL!")
+                print(f"Profit! {profit_pct*100:.2f}% SELL!")
                 place_sell_order(btc_quantity)
                 position = None
                 consecutive_losses = 0
@@ -236,3 +236,4 @@ while True:
     except Exception as e:
         print(f"Error: {e}")
         time.sleep(30)
+    
