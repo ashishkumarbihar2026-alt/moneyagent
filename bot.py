@@ -12,7 +12,7 @@ API_SECRET = os.environ.get("API_SECRET", "")
 SYMBOL = "ETHINR"
 BASE_URL = "https://api.coindcx.com"
 
-PROFIT_TARGET = 2.5 / 100
+PROFIT_TARGET = 1.0 / 100
 STOP_LOSS = 3.0 / 100
 DAILY_LOSS_LIMIT = 10.0 / 100
 COOLDOWN_LOSSES = 5
@@ -238,4 +238,4 @@ while True:
     except Exception as e:
         print(f"Error: {e}")
         time.sleep(30)
-            
+                    
