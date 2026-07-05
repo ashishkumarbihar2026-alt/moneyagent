@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 import os
 API_KEY = os.environ.get("API_KEY", "")
 API_SECRET = os.environ.get("API_SECRET", "")
-SYMBOL = "ETHINR"
+SYMBOL = "HMSTRINR"
 BASE_URL = "https://api.coindcx.com"
 
 PROFIT_TARGET = 1.0 / 100
@@ -27,6 +27,46 @@ daily_reset_time = datetime.now() + timedelta(hours=24)
 consecutive_losses = 0
 cooldown_until = None
 price_history = []
+
+STATE_FILE = "/data/position.json"
+
+def save_state():
+    try:
+        state = {
+            "position": position,
+            "buy_price": buy_price,
+            "btc_quantity": btc_quantity,
+            "starting_capital": starting_capital,
+            "daily_start_capital": daily_start_capital,
+            "daily_reset_time": daily_reset_time.isoformat(),
+            "consecutive_losses": consecutive_losses,
+            "cooldown_until": cooldown_until.isoformat() if cooldown_until else None
+        }
+        with open(STATE_FILE, "w") as f:
+            json.dump(state, f)
+    except Exception as e:
+        print(f"State save error: {e}")
+
+def load_state():
+    global position, buy_price, btc_quantity, starting_capital, daily_start_capital, daily_reset_time, consecutive_losses, cooldown_until
+    try:
+        with open(STATE_FILE, "r") as f:
+            state = json.load(f)
+        position = state.get("position")
+        buy_price = state.get("buy_price", 0)
+        btc_quantity = state.get("btc_quantity", 0)
+        starting_capital = state.get("starting_capital")
+        daily_start_capital = state.get("daily_start_capital")
+        if state.get("daily_reset_time"):
+            daily_reset_time = datetime.fromisoformat(state["daily_reset_time"])
+        consecutive_losses = state.get("consecutive_losses", 0)
+        if state.get("cooldown_until"):
+            cooldown_until = datetime.fromisoformat(state["cooldown_until"])
+        print(f"State restored: position={position}, buy_price={buy_price}, quantity={btc_quantity}")
+    except FileNotFoundError:
+        print("No saved state found, starting fresh")
+    except Exception as e:
+        print(f"State load error: {e}")
 
 def get_signature(body):
     return hmac.new(
@@ -154,6 +194,8 @@ def get_rsi(prices, period=14):
 print("MoneyAgent Bot Started!")
 print(f"Profit:{PROFIT_TARGET*100}% | StopLoss:{STOP_LOSS*100}% | DailyLossLimit:{DAILY_LOSS_LIMIT*100}%")
 
+load_state()
+
 while True:
     try:
         now = datetime.now()
@@ -213,6 +255,7 @@ while True:
                 place_sell_order(btc_quantity)
                 position = None
                 consecutive_losses = 0
+                save_state()
             elif profit_pct <= -STOP_LOSS:
                 print(f"Stop Loss! {profit_pct*100:.2f}% SELL!")
                 place_sell_order(btc_quantity)
@@ -221,6 +264,7 @@ while True:
                 if consecutive_losses >= COOLDOWN_LOSSES:
                     cooldown_until = now + timedelta(seconds=COOLDOWN_TIME)
                     print("5 loss! Cooldown shuru!")
+                save_state()
 
         elif position is None and inr_balance > 10:
             ema_ok = ema9 > ema21
@@ -230,6 +274,7 @@ while True:
                 btc_quantity = place_buy_order(inr_balance, price)
                 position = "buy"
                 buy_price = price
+                save_state()
             else:
                 print(f"Wait | EMA: {'OK' if ema_ok else 'NO'} | RSI: {rsi_str}")
 
@@ -238,4 +283,4 @@ while True:
     except Exception as e:
         print(f"Error: {e}")
         time.sleep(30)
-                    
+        
