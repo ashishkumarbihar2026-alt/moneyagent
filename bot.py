@@ -13,7 +13,7 @@ SYMBOL = "BTCINR"
 BASE_URL = "https://api.coindcx.com"
 
 PRECISION_MAP = {
-    "BTCINR": 6,
+    "BTCINR": 5,
     "ETHINR": 4,
     "HMSTRINR": 0
 }
@@ -292,4 +292,4 @@ while True:
     except Exception as e:
         print(f"Error: {e}")
         time.sleep(30)
-            
+    
