@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 import os
 API_KEY = os.environ.get("API_KEY", "")
 API_SECRET = os.environ.get("API_SECRET", "")
-SYMBOL = "ETHINR"
+SYMBOL = "BTCINR"
 BASE_URL = "https://api.coindcx.com"
 
 PROFIT_TARGET = 2.5 / 100
@@ -83,7 +83,7 @@ def place_buy_order(inr_amount, current_price):
             "side": "buy",
             "order_type": "market_order",
             "market": SYMBOL,
-            "quantity": quantity,
+            "total_quantity": quantity,
             "timestamp": timestamp
         }
         body = json.dumps(order)
@@ -107,7 +107,7 @@ def place_sell_order(quantity):
             "side": "sell",
             "order_type": "market_order",
             "market": SYMBOL,
-            "quantity": quantity,
+            "total_quantity": quantity,
             "timestamp": timestamp
         }
         body = json.dumps(order)
@@ -236,4 +236,4 @@ while True:
     except Exception as e:
         print(f"Error: {e}")
         time.sleep(30)
-    
+                              
