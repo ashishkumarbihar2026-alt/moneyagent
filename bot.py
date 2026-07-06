@@ -4,45 +4,64 @@ import hmac
 import time
 import json
 import math
+import os
 from datetime import datetime, timedelta
 
-import os
 API_KEY = os.environ.get("API_KEY", "")
 API_SECRET = os.environ.get("API_SECRET", "")
-SYMBOL = "BTCINR"
 BASE_URL = "https://api.coindcx.com"
+
+# ---- Multi-coin list: add/remove coins here ----
+SYMBOLS = ["BTCINR", "ETHINR"]
 
 PRECISION_MAP = {
     "BTCINR": 5,
     "ETHINR": 4,
     "HMSTRINR": 0
 }
-QUANTITY_PRECISION = PRECISION_MAP.get(SYMBOL, 2)
 
 PROFIT_TARGET = 2.0 / 100
 STOP_LOSS = 3.0 / 100
+TRAILING_STOP_PCT = 1.0 / 100   # once in profit, sell if price falls this much from peak
 DAILY_LOSS_LIMIT = 10.0 / 100
 COOLDOWN_LOSSES = 5
 COOLDOWN_TIME = 3600
 
-position = None
-buy_price = 0
-btc_quantity = 0
+# ---- Telegram alerts (optional, set these in Railway Variables) ----
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
+
+def send_telegram(message):
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        return
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+            data={"chat_id": TELEGRAM_CHAT_ID, "text": message},
+            timeout=10
+        )
+    except Exception as e:
+        print(f"Telegram error: {e}")
+
+# ---- Per-symbol state ----
+positions = {
+    sym: {"position": None, "buy_price": 0, "quantity": 0, "peak_price": 0}
+    for sym in SYMBOLS
+}
+price_history = {sym: [] for sym in SYMBOLS}
+
 starting_capital = None
 daily_start_capital = None
 daily_reset_time = datetime.now() + timedelta(hours=24)
 consecutive_losses = 0
 cooldown_until = None
-price_history = []
 
 STATE_FILE = "/data/position.json" if os.path.isdir("/data") else "position.json"
 
 def save_state():
     try:
         state = {
-            "position": position,
-            "buy_price": buy_price,
-            "btc_quantity": btc_quantity,
+            "positions": positions,
             "starting_capital": starting_capital,
             "daily_start_capital": daily_start_capital,
             "daily_reset_time": daily_reset_time.isoformat(),
@@ -55,13 +74,14 @@ def save_state():
         print(f"State save error: {e}")
 
 def load_state():
-    global position, buy_price, btc_quantity, starting_capital, daily_start_capital, daily_reset_time, consecutive_losses, cooldown_until
+    global positions, starting_capital, daily_start_capital, daily_reset_time, consecutive_losses, cooldown_until
     try:
         with open(STATE_FILE, "r") as f:
             state = json.load(f)
-        position = state.get("position")
-        buy_price = state.get("buy_price", 0)
-        btc_quantity = state.get("btc_quantity", 0)
+        saved_positions = state.get("positions", {})
+        for sym in SYMBOLS:
+            if sym in saved_positions:
+                positions[sym] = saved_positions[sym]
         starting_capital = state.get("starting_capital")
         daily_start_capital = state.get("daily_start_capital")
         if state.get("daily_reset_time"):
@@ -69,7 +89,7 @@ def load_state():
         consecutive_losses = state.get("consecutive_losses", 0)
         if state.get("cooldown_until"):
             cooldown_until = datetime.fromisoformat(state["cooldown_until"])
-        print(f"State restored: position={position}, buy_price={buy_price}, quantity={btc_quantity}")
+        print(f"State restored: {positions}")
     except FileNotFoundError:
         print("No saved state found, starting fresh")
     except Exception as e:
@@ -95,8 +115,12 @@ def get_inr_balance():
         res = requests.post(
             f"{BASE_URL}/exchange/v1/users/balances",
             data=body,
-            headers=get_headers(body)
+            headers=get_headers(body),
+            timeout=15
         )
+        if res.status_code != 200:
+            print(f"Balance error: HTTP {res.status_code}")
+            return 0
         data = res.json()
         if isinstance(data, list):
             for b in data:
@@ -107,32 +131,36 @@ def get_inr_balance():
         print(f"Balance error: {e}")
         return 0
 
-def get_price():
+def get_all_prices():
+    """Fetch ticker once, return {symbol: price} for all SYMBOLS."""
+    prices = {}
     try:
-        res = requests.get("https://api.coindcx.com/exchange/ticker")
+        res = requests.get("https://api.coindcx.com/exchange/ticker", timeout=15)
+        if res.status_code != 200:
+            print(f"Price error: HTTP {res.status_code}")
+            return prices
         data = res.json()
         if isinstance(data, list):
             for item in data:
-                if isinstance(item, dict) and item.get("market") == SYMBOL:
-                    return float(item.get("last_price", 0))
-        elif isinstance(data, dict):
-            for key, val in data.items():
-                if isinstance(val, dict) and val.get("market") == SYMBOL:
-                    return float(val.get("last_price", 0))
+                if isinstance(item, dict) and item.get("market") in SYMBOLS:
+                    prices[item["market"]] = float(item.get("last_price", 0))
     except Exception as e:
         print(f"Price error: {e}")
-    return None
+    return prices
 
-def place_buy_order(inr_amount, current_price):
+def place_buy_order(symbol, inr_amount, current_price):
     try:
         usable_amount = inr_amount * 0.97
-        multiplier = 10 ** QUANTITY_PRECISION
+        precision = PRECISION_MAP.get(symbol, 2)
+        multiplier = 10 ** precision
         quantity = math.floor((usable_amount / current_price) * multiplier) / multiplier
+        if quantity <= 0:
+            return 0
         timestamp = int(time.time() * 1000)
         order = {
             "side": "buy",
             "order_type": "market_order",
-            "market": SYMBOL,
+            "market": symbol,
             "total_quantity": quantity,
             "timestamp": timestamp
         }
@@ -142,7 +170,7 @@ def place_buy_order(inr_amount, current_price):
             data=body,
             headers=get_headers(body)
         )
-        print(f"BUY: {quantity} BTC | INR: {inr_amount:.2f}")
+        print(f"BUY: {quantity} {symbol} | INR: {inr_amount:.2f}")
         response = res.json()
         print(f"Order response: {response}")
         return quantity
@@ -150,13 +178,13 @@ def place_buy_order(inr_amount, current_price):
         print(f"Buy error: {e}")
         return 0
 
-def place_sell_order(quantity):
+def place_sell_order(symbol, quantity):
     try:
         timestamp = int(time.time() * 1000)
         order = {
             "side": "sell",
             "order_type": "market_order",
-            "market": SYMBOL,
+            "market": symbol,
             "total_quantity": quantity,
             "timestamp": timestamp
         }
@@ -166,7 +194,7 @@ def place_sell_order(quantity):
             data=body,
             headers=get_headers(body)
         )
-        print(f"SELL: {quantity} BTC")
+        print(f"SELL: {quantity} {symbol}")
         return res.json()
     except Exception as e:
         print(f"Sell error: {e}")
@@ -200,7 +228,8 @@ def get_rsi(prices, period=14):
     return 100 - (100 / (1 + rs))
 
 print("MoneyAgent Bot Started!")
-print(f"Profit:{PROFIT_TARGET*100}% | StopLoss:{STOP_LOSS*100}% | DailyLossLimit:{DAILY_LOSS_LIMIT*100}%")
+print(f"Coins: {SYMBOLS} | Profit:{PROFIT_TARGET*100}% | StopLoss:{STOP_LOSS*100}% | Trailing:{TRAILING_STOP_PCT*100}% | DailyLossLimit:{DAILY_LOSS_LIMIT*100}%")
+send_telegram(f"MoneyAgent Bot Started! Coins: {SYMBOLS}")
 
 load_state()
 
@@ -219,6 +248,7 @@ while True:
             daily_reset_time = now + timedelta(hours=24)
             consecutive_losses = 0
             print(f"Daily reset! Capital: {daily_start_capital}")
+            save_state()
 
         inr_balance = get_inr_balance()
 
@@ -228,68 +258,103 @@ while True:
             print(f"Starting Capital: {starting_capital}")
             save_state()
 
-        if daily_start_capital > 0:
+        if daily_start_capital and daily_start_capital > 0:
             daily_loss = (daily_start_capital - inr_balance) / daily_start_capital
-            if daily_loss >= DAILY_LOSS_LIMIT and position is None:
+            has_open_position = any(p["position"] == "buy" for p in positions.values())
+            if daily_loss >= DAILY_LOSS_LIMIT and not has_open_position:
                 print("Daily loss limit! Trading band!")
+                send_telegram("Daily loss limit hit! Trading paused for 5 min.")
                 time.sleep(300)
                 continue
 
-        price = get_price()
-        if not price:
-            print("Price nahi mili!")
-            time.sleep(15)
-            continue
+        all_prices = get_all_prices()
 
-        price_history.append(price)
-        if len(price_history) > 120:
-            price_history.pop(0)
+        # Count symbols without open positions (for splitting available cash)
+        pending_buys = [s for s in SYMBOLS if positions[s]["position"] is None]
 
-        ema9 = get_ema(price_history, 9)
-        ema21 = get_ema(price_history, 21)
-        rsi = get_rsi(price_history)
+        for symbol in SYMBOLS:
+            price = all_prices.get(symbol)
+            if not price:
+                continue
 
-        if not ema9 or not ema21:
-            print(f"Price: {price:,.0f} | Data collect ho raha hai {len(price_history)}/21")
-            time.sleep(15)
-            continue
+            price_history[symbol].append(price)
+            if len(price_history[symbol]) > 120:
+                price_history[symbol].pop(0)
 
-        rsi_str = f"{rsi:.1f}" if rsi else "..."
-        print(f"Price: {price:,.0f} | EMA9: {ema9:,.0f} | EMA21: {ema21:,.0f} | RSI: {rsi_str} | INR: {inr_balance:.2f}")
+            hist = price_history[symbol]
+            ema9 = get_ema(hist, 9)
+            ema21 = get_ema(hist, 21)
+            rsi = get_rsi(hist)
 
-        if position == "buy":
-            profit_pct = (price - buy_price) / buy_price
-            if profit_pct >= PROFIT_TARGET:
-                print(f"Profit! {profit_pct*100:.2f}% SELL!")
-                place_sell_order(btc_quantity)
-                position = None
-                consecutive_losses = 0
-                save_state()
-            elif profit_pct <= -STOP_LOSS:
-                print(f"Stop Loss! {profit_pct*100:.2f}% SELL!")
-                place_sell_order(btc_quantity)
-                position = None
-                consecutive_losses += 1
-                if consecutive_losses >= COOLDOWN_LOSSES:
-                    cooldown_until = now + timedelta(seconds=COOLDOWN_TIME)
-                    print("5 loss! Cooldown shuru!")
-                save_state()
+            if not ema9 or not ema21:
+                print(f"{symbol} | Price: {price:.4f} | Data collect ho raha hai {len(hist)}/21")
+                continue
 
-        elif position is None and inr_balance > 10:
-            ema_ok = ema9 > ema21
-            rsi_ok = rsi and rsi < 60
-            if ema_ok and rsi_ok:
-                print(f"BUY Signal!")
-                btc_quantity = place_buy_order(inr_balance, price)
-                position = "buy"
-                buy_price = price
-                save_state()
-            else:
-                print(f"Wait | EMA: {'OK' if ema_ok else 'NO'} | RSI: {rsi_str}")
+            rsi_str = f"{rsi:.1f}" if rsi else "..."
+            pos = positions[symbol]
 
-        time.sleep(15)
+            if pos["position"] == "buy":
+                if price > pos["peak_price"]:
+                    pos["peak_price"] = price
+
+                profit_pct = (price - pos["buy_price"]) / pos["buy_price"]
+                drop_from_peak = (pos["peak_price"] - price) / pos["peak_price"] if pos["peak_price"] > 0 else 0
+
+                print(f"{symbol} | Price: {price:.4f} | EMA9: {ema9:.4f} | EMA21: {ema21:.4f} | RSI: {rsi_str} | P/L: {profit_pct*100:.2f}%")
+
+                if profit_pct >= PROFIT_TARGET:
+                    print(f"{symbol} Profit! {profit_pct*100:.2f}% SELL!")
+                    place_sell_order(symbol, pos["quantity"])
+                    send_telegram(f"{symbol} PROFIT SELL! {profit_pct*100:.2f}%")
+                    pos["position"] = None
+                    pos["quantity"] = 0
+                    pos["peak_price"] = 0
+                    consecutive_losses = 0
+                    save_state()
+                elif profit_pct > 0 and drop_from_peak >= TRAILING_STOP_PCT:
+                    print(f"{symbol} Trailing Stop! Locking {profit_pct*100:.2f}% SELL!")
+                    place_sell_order(symbol, pos["quantity"])
+                    send_telegram(f"{symbol} TRAILING STOP SELL! {profit_pct*100:.2f}%")
+                    pos["position"] = None
+                    pos["quantity"] = 0
+                    pos["peak_price"] = 0
+                    consecutive_losses = 0
+                    save_state()
+                elif profit_pct <= -STOP_LOSS:
+                    print(f"{symbol} Stop Loss! {profit_pct*100:.2f}% SELL!")
+                    place_sell_order(symbol, pos["quantity"])
+                    send_telegram(f"{symbol} STOP LOSS SELL! {profit_pct*100:.2f}%")
+                    pos["position"] = None
+                    pos["quantity"] = 0
+                    pos["peak_price"] = 0
+                    consecutive_losses += 1
+                    if consecutive_losses >= COOLDOWN_LOSSES:
+                        cooldown_until = now + timedelta(seconds=COOLDOWN_TIME)
+                        print("5 loss! Cooldown shuru!")
+                        send_telegram("5 consecutive losses! Cooldown for 1 hour.")
+                    save_state()
+
+            elif inr_balance > 10 and symbol in pending_buys:
+                ema_ok = ema9 > ema21
+                rsi_ok = rsi and rsi < 60
+                print(f"{symbol} | Price: {price:.4f} | EMA: {'OK' if ema_ok else 'NO'} | RSI: {rsi_str}")
+                if ema_ok and rsi_ok:
+                    share = inr_balance / len(pending_buys) if pending_buys else inr_balance
+                    print(f"{symbol} BUY Signal!")
+                    quantity = place_buy_order(symbol, share, price)
+                    if quantity > 0:
+                        pos["position"] = "buy"
+                        pos["buy_price"] = price
+                        pos["quantity"] = quantity
+                        pos["peak_price"] = price
+                        send_telegram(f"{symbol} BUY! {quantity} @ {price:.4f}")
+                        save_state()
+                        pending_buys.remove(symbol)
+                        inr_balance -= share
+
+        time.sleep(60)
 
     except Exception as e:
         print(f"Error: {e}")
+        send_telegram(f"Bot error: {e}")
         time.sleep(30)
-    
